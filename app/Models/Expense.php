@@ -14,8 +14,13 @@ class Expense extends Model
 {
     use SoftDeletes;
 
+    public const TYPE_PROJECT = 'project';
+    public const TYPE_PERSONAL = 'personal';
+
     protected $fillable = [
         'project_id',
+        'expense_type',
+        'owner_user_id',
         'is_shared',
         'expense_category_id',
         'amount_paisa',
@@ -39,6 +44,8 @@ class Expense extends Model
         return [
             'amount_paisa' => 'integer',
             'expense_date' => 'date',
+            'expense_type' => 'string',
+            'owner_user_id' => 'integer',
             'is_shared' => 'boolean',
             'is_paid' => 'boolean',
             'paid_at' => 'datetime',
@@ -48,6 +55,11 @@ class Expense extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_user_id');
     }
 
     public function category(): BelongsTo
@@ -86,15 +98,19 @@ class Expense extends Model
      */
     public function scopeAccessibleBy(Builder $query, User $user): Builder
     {
-        if ($user->hasPortfolioFinanceAccess()) {
+        if ($user->isAdmin()) {
             return $query;
         }
 
         $ids = $user->accessibleProjectIds() ?: [0];
 
-        return $query->where(function (Builder $q) use ($ids) {
+        return $query->where(function (Builder $q) use ($ids, $user) {
             $q->whereIn('project_id', $ids)
-                ->orWhere('is_shared', true);
+                ->orWhere('is_shared', true)
+                ->orWhere(function (Builder $personal) use ($user) {
+                    $personal->where('expense_type', self::TYPE_PERSONAL)
+                        ->where('owner_user_id', $user->id);
+                });
         });
     }
 

@@ -35,12 +35,7 @@ class MediaDownloadController extends Controller
 
     public function receipt(Request $request, Expense $expense): StreamedResponse
     {
-        // Permission alone is not enough: partners hold expenses.view but must
-        // only reach expenses for projects they can access (or shared costs).
-        // Matches Expense::scopeAccessibleBy used by lists, P&L and AI reports.
-        if (! Expense::query()->accessibleBy($request->user())->whereKey($expense->id)->exists()) {
-            throw new AccessDeniedHttpException;
-        }
+        Gate::forUser($request->user())->authorize('view', $expense);
 
         if (blank($expense->receipt_path)) {
             throw new NotFoundHttpException;

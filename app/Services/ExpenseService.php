@@ -70,6 +70,8 @@ class ExpenseService
     /**
      * @param  array{
      *   project_id?: int|null,
+     *   expense_type?: string,
+     *   owner_user_id?: int|null,
      *   is_shared?: bool,
      *   expense_category_id?: int|null,
      *   amount_paisa?: int,
@@ -84,9 +86,11 @@ class ExpenseService
     public function createManual(array $data, User $actor, ?UploadedFile $receipt = null): Expense
     {
         $isShared = (bool) ($data['is_shared'] ?? false);
-        $projectId = $isShared ? null : (int) ($data['project_id'] ?? 0);
+        $expenseType = $data['expense_type'] ?? Expense::TYPE_PROJECT;
+        $isPersonal = $expenseType === Expense::TYPE_PERSONAL;
+        $projectId = $isShared || $isPersonal ? null : (int) ($data['project_id'] ?? 0);
 
-        if (! $isShared && $projectId < 1) {
+        if (! $isShared && ! $isPersonal && $projectId < 1) {
             throw new InvalidArgumentException('Project is required for direct expenses.');
         }
 
@@ -94,8 +98,15 @@ class ExpenseService
             ? (int) $data['amount_paisa']
             : Money::toMinor($data['amount'] ?? 0);
 
+        $ownerId = $isPersonal ? (($data['owner_user_id'] ?? $actor->id) ?: $actor->id) : null;
+        if ($isPersonal && ! $actor->isAdmin() && (int) ($data['owner_user_id'] ?? $actor->id) !== (int) $actor->id) {
+            $ownerId = $actor->id;
+        }
+
         $expense = Expense::query()->create([
             'project_id' => $projectId ?: null,
+            'expense_type' => $expenseType,
+            'owner_user_id' => $ownerId,
             'is_shared' => $isShared,
             'expense_category_id' => $data['expense_category_id'] ?? null,
             'amount_paisa' => max(0, $amount),
@@ -148,7 +159,9 @@ class ExpenseService
 
         $old = $expense->toArray();
         $isShared = array_key_exists('is_shared', $data) ? (bool) $data['is_shared'] : $expense->is_shared;
-        $projectId = $isShared ? null : (int) ($data['project_id'] ?? $expense->project_id);
+        $expenseType = array_key_exists('expense_type', $data) ? $data['expense_type'] : ($expense->expense_type ?? Expense::TYPE_PROJECT);
+        $isPersonal = $expenseType === Expense::TYPE_PERSONAL;
+        $projectId = $isShared || $isPersonal ? null : (int) ($data['project_id'] ?? $expense->project_id);
 
         $amount = isset($data['amount_paisa'])
             ? (int) $data['amount_paisa']
@@ -156,8 +169,18 @@ class ExpenseService
                 ? Money::toMinor($data['amount'])
                 : (int) $expense->amount_paisa);
 
+        $ownerId = $isPersonal
+            ? (($data['owner_user_id'] ?? $expense->owner_user_id) ?: $actor->id)
+            : null;
+
+        if ($isPersonal && ! $actor->isAdmin() && (int) ($data['owner_user_id'] ?? $expense->owner_user_id ?? $actor->id) !== (int) $actor->id) {
+            $ownerId = $actor->id;
+        }
+
         $expense->update([
             'project_id' => $projectId ?: null,
+            'expense_type' => $expenseType,
+            'owner_user_id' => $ownerId,
             'is_shared' => $isShared,
             'expense_category_id' => $data['expense_category_id'] ?? $expense->expense_category_id,
             'amount_paisa' => max(0, $amount),

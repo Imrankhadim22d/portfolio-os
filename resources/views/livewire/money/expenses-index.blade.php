@@ -47,26 +47,43 @@
         >
             <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div class="sm:col-span-2 lg:col-span-3">
-                    <x-checkbox
-                        wire:model.live="is_shared"
-                        label="Shared cost"
-                        hint="Split by monthly revenue across active sites instead of billing one project."
-                    />
+                    <x-select label="Expense type" wire:model.live="expense_type" :error="$errors->first('expense_type')">
+                        <option value="project">Project Expense</option>
+                        <option value="personal">Personal / Office Expense</option>
+                    </x-select>
                 </div>
 
-                @unless ($is_shared)
-                    <x-select
-                        label="Project"
-                        wire:model="project_id"
-                        placeholder="Select…"
-                        :error="$errors->first('project_id')"
-                        required
-                    >
-                        @foreach ($projects as $p)
-                            <option value="{{ $p->id }}">{{ $p->domain }}</option>
-                        @endforeach
-                    </x-select>
-                @endunless
+                @if ($expense_type === 'personal')
+                    @if ($canManageAllPersonal)
+                        <x-select label="Owner" wire:model="owner_user_id" placeholder="Select owner" :error="$errors->first('owner_user_id')">
+                            @foreach ($users as $u)
+                                <option value="{{ $u->id }}">{{ $u->name }}</option>
+                            @endforeach
+                        </x-select>
+                    @endif
+                @else
+                    <div class="sm:col-span-2 lg:col-span-3">
+                        <x-checkbox
+                            wire:model.live="is_shared"
+                            label="Shared cost"
+                            hint="Split by monthly revenue across active sites instead of billing one project."
+                        />
+                    </div>
+
+                    @unless ($is_shared)
+                        <x-select
+                            label="Project"
+                            wire:model="project_id"
+                            placeholder="Select…"
+                            :error="$errors->first('project_id')"
+                            required
+                        >
+                            @foreach ($projects as $p)
+                                <option value="{{ $p->id }}">{{ $p->domain }}</option>
+                            @endforeach
+                        </x-select>
+                    @endunless
+                @endif
 
                 <x-select
                     label="Category"
@@ -247,7 +264,8 @@
                     $canManage ? [['label' => 'Select', 'sr' => true, 'width' => 'w-10']] : [],
                     [
                         ['label' => 'Date', 'width' => 'w-28'],
-                        'Project',
+                        'Type',
+                        'Project / Owner',
                         'Category',
                         'Description',
                         ['label' => \App\Support\Currency::code(), 'align' => 'right'],
@@ -269,7 +287,18 @@
 
                         <x-table.cell mono nowrap>{{ $e->expense_date->format('Y-m-d') }}</x-table.cell>
                         <x-table.cell>
-                            @if ($e->is_shared)
+                            @if (($e->expense_type ?? 'project') === 'personal')
+                                <x-badge tone="accent">Personal</x-badge>
+                            @elseif ($e->is_shared)
+                                <x-badge tone="warn">Shared</x-badge>
+                            @else
+                                <x-badge tone="neutral">Project</x-badge>
+                            @endif
+                        </x-table.cell>
+                        <x-table.cell>
+                            @if (($e->expense_type ?? 'project') === 'personal')
+                                <span class="font-medium text-ink">{{ $e->owner?->name ?? 'Personal' }}</span>
+                            @elseif ($e->is_shared)
                                 <x-badge tone="warn">Shared</x-badge>
                             @else
                                 <span class="font-medium text-ink">{{ $e->project?->domain }}</span>

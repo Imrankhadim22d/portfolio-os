@@ -229,6 +229,28 @@ it('smoke-exports revenue and expense CSV for finance users', function () {
         ->assertSuccessful();
 });
 
+it('creates a personal expense with owner_user_id and keeps it private to the owner and admin visibility path', function () {
+    $admin = moneyAdmin();
+    $owner = User::factory()->create();
+    $other = User::factory()->create();
+
+    $expense = app(ExpenseService::class)->createManual([
+        'expense_type' => Expense::TYPE_PERSONAL,
+        'amount' => '2500',
+        'description' => 'Office coffee',
+        'expense_date' => '2026-07-15',
+        'is_paid' => false,
+    ], $owner);
+
+    expect($expense->expense_type)->toBe(Expense::TYPE_PERSONAL)
+        ->and($expense->project_id)->toBeNull()
+        ->and((int) $expense->owner_user_id)->toBe((int) $owner->id);
+
+    expect(Expense::query()->accessibleBy($owner)->whereKey($expense->id)->exists())->toBeTrue()
+        ->and(Expense::query()->accessibleBy($other)->whereKey($expense->id)->exists())->toBeFalse()
+        ->and(Expense::query()->accessibleBy($admin)->whereKey($expense->id)->exists())->toBeTrue();
+});
+
 it('allows accountant finance access and blocks partner mutations', function () {
     $accountant = moneyAccountant();
     $partner = moneyPartner();

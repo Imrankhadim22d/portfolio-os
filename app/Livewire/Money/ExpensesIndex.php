@@ -6,6 +6,7 @@ use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\Project;
 use App\Models\RecurringExpense;
+use App\Models\User;
 use App\Policies\FinancePolicy;
 use App\Services\CsvExportService;
 use App\Services\ExpenseService;
@@ -14,6 +15,7 @@ use App\Support\DisplayTimezone;
 use App\Support\Money;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
@@ -47,6 +49,10 @@ class ExpensesIndex extends Component
     public ?int $editingId = null;
 
     public string $project_id = '';
+
+    public string $expense_type = Expense::TYPE_PROJECT;
+
+    public string $owner_user_id = '';
 
     public bool $is_shared = false;
 
@@ -96,17 +102,19 @@ class ExpensesIndex extends Component
 
     public function create(): void
     {
-        abort_unless(FinancePolicy::manageExpenses(Auth::user()), 403);
+        Gate::authorize('create', Expense::class);
         $this->resetForm();
         $this->showForm = true;
     }
 
     public function edit(int $id): void
     {
-        abort_unless(FinancePolicy::manageExpenses(Auth::user()), 403);
         $e = Expense::query()->findOrFail($id);
+        Gate::authorize('update', $e);
         $this->editingId = $e->id;
+        $this->expense_type = $e->expense_type ?? Expense::TYPE_PROJECT;
         $this->project_id = (string) ($e->project_id ?? '');
+        $this->owner_user_id = (string) ($e->owner_user_id ?? '');
         $this->is_shared = (bool) $e->is_shared;
         $this->expense_category_id = (string) ($e->expense_category_id ?? '');
         $this->amount = Money::fromMinor((int) $e->amount_paisa);
@@ -119,11 +127,18 @@ class ExpensesIndex extends Component
 
     public function save(ExpenseService $expenses): void
     {
-        abort_unless(FinancePolicy::manageExpenses(Auth::user()), 403);
+        if ($this->editingId) {
+            $expense = Expense::query()->findOrFail($this->editingId);
+            Gate::authorize('update', $expense);
+        } else {
+            Gate::authorize('create', Expense::class);
+        }
 
         $this->validate([
             'is_shared' => ['boolean'],
-            'project_id' => [$this->is_shared ? 'nullable' : 'required', 'integer', 'exists:projects,id'],
+            'expense_type' => ['required', 'in:'.Expense::TYPE_PROJECT.','.Expense::TYPE_PERSONAL],
+            'project_id' => [$this->expense_type === Expense::TYPE_PROJECT && ! $this->is_shared ? 'required' : 'nullable', 'integer', 'exists:projects,id'],
+            'owner_user_id' => [$this->expense_type === Expense::TYPE_PERSONAL ? 'nullable' : 'sometimes', 'integer', 'exists:users,id'],
             'expense_category_id' => ['nullable', 'integer', 'exists:expense_categories,id'],
             'amount' => ['required', 'numeric', 'min:0'],
             'description' => ['required', 'string', 'max:500'],
@@ -133,8 +148,18 @@ class ExpensesIndex extends Component
             'receipt' => ['nullable', 'file', 'max:5120', 'mimes:pdf,png,jpg,jpeg,gif,webp'],
         ]);
 
+        $personalOwner = $this->expense_type === Expense::TYPE_PERSONAL
+            ? ($this->owner_user_id !== '' ? (int) $this->owner_user_id : Auth::id())
+            : null;
+
+        if ($this->expense_type === Expense::TYPE_PERSONAL && ! Auth::user()->isAdmin()) {
+            $personalOwner = Auth::id();
+        }
+
         $data = [
             'project_id' => $this->project_id !== '' ? (int) $this->project_id : null,
+            'expense_type' => $this->expense_type,
+            'owner_user_id' => $personalOwner,
             'is_shared' => $this->is_shared,
             'expense_category_id' => $this->expense_category_id !== '' ? (int) $this->expense_category_id : null,
             'amount' => $this->amount,
@@ -159,8 +184,9 @@ class ExpensesIndex extends Component
 
     public function delete(int $id, ExpenseService $expenses): void
     {
-        abort_unless(FinancePolicy::manageExpenses(Auth::user()), 403);
-        $expenses->softDelete(Expense::query()->findOrFail($id), Auth::user());
+        $expense = Expense::query()->findOrFail($id);
+        Gate::authorize('delete', $expense);
+        $expenses->softDelete($expense, Auth::user());
         $this->dispatch('toast', message: 'Expense soft-deleted.', tone: 'success');
     }
 
@@ -230,7 +256,9 @@ class ExpensesIndex extends Component
     protected function resetForm(): void
     {
         $this->editingId = null;
+        $this->expense_type = Expense::TYPE_PROJECT;
         $this->project_id = $this->projectFilter;
+        $this->owner_user_id = '';
         $this->is_shared = false;
         $this->expense_category_id = '';
         $this->amount = '';
@@ -247,7 +275,12 @@ class ExpensesIndex extends Component
         return Expense::query()
             ->accessibleBy($user)
             ->when($this->projectFilter !== '', fn ($q) => $q->where(function ($q) {
-                $q->where('project_id', $this->projectFilter)->orWhere('is_shared', true);
+                $q->where('project_id', $this->projectFilter)
+                    ->orWhere('is_shared', true)
+                    ->orWhere(function ($q2) {
+                        $q2->where('expense_type', Expense::TYPE_PERSONAL)
+                            ->where('owner_user_id', Auth::id());
+                    });
             }))
             ->when($this->monthFilter !== '', function ($q) {
                 $start = $this->monthFilter.'-01';
@@ -270,10 +303,12 @@ class ExpensesIndex extends Component
         $user = Auth::user();
 
         return view('livewire.money.expenses-index', [
-            'expenses' => $this->baseQuery()->with(['project', 'category'])->orderByDesc('expense_date')->orderByDesc('id')->paginate(20),
+            'expenses' => $this->baseQuery()->with(['project', 'category', 'owner'])->orderByDesc('expense_date')->orderByDesc('id')->paginate(20),
             'projects' => Project::query()->accessibleBy($user)->orderBy('domain')->get(),
             'categories' => ExpenseCategory::query()->orderBy('name')->get(),
+            'users' => User::query()->where('is_active', true)->orderBy('name')->get(),
             'canManage' => FinancePolicy::manageExpenses($user),
+            'canManageAllPersonal' => $user->isAdmin(),
             'recurring' => RecurringExpense::query()->where('is_active', true)->orderBy('next_run_date')->limit(10)->get(),
         ]);
     }

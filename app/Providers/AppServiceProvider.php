@@ -4,12 +4,14 @@ namespace App\Providers;
 
 use App\Models\Article;
 use App\Models\Credential;
+use App\Models\Expense;
 use App\Models\Link;
 use App\Models\Project;
 use App\Models\Task;
 use App\Models\TaskTemplate;
 use App\Policies\ArticlePolicy;
 use App\Policies\CredentialPolicy;
+use App\Policies\ExpensePolicy;
 use App\Policies\LinkPolicy;
 use App\Policies\ProjectPolicy;
 use App\Policies\TaskPolicy;
@@ -46,5 +48,6 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Article::class, ArticlePolicy::class);
         Gate::policy(Link::class, LinkPolicy::class);
         Gate::policy(TaskTemplate::class, TaskTemplatePolicy::class);
+        Gate::policy(Expense::class, ExpensePolicy::class);
     }
 }
