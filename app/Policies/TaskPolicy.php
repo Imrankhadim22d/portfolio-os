@@ -49,6 +49,23 @@ class TaskPolicy
         return $user->hasPermission('tasks.approve') && $user->canAccessProject($task->project);
     }
 
+    public function delete(User $user, Task $task): bool
+    {
+        if (! $user->canAccessProject($task->project)) {
+            return false;
+        }
+
+        if ($user->hasPermission('tasks.assign') || $user->hasPermission('tasks.approve')) {
+            return true;
+        }
+
+        if ($user->hasPermission('tasks.update') && (int) $task->assigned_to === (int) $user->id) {
+            return true;
+        }
+
+        return false;
+    }
+
     public function submit(User $user, Task $task): bool
     {
         if (! $user->hasPermission('tasks.submit') || ! $user->canAccessProject($task->project)) {

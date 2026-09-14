@@ -15,6 +15,7 @@ class Task extends Model
 {
     protected $fillable = [
         'project_id',
+        'parent_task_id',
         'task_template_id',
         'title',
         'description',
@@ -42,6 +43,7 @@ class Task extends Model
             'due_date' => 'date',
             'next_occurrence_date' => 'date',
             'time_spent_minutes' => 'integer',
+            'parent_task_id' => 'integer',
             'is_recurrence_source' => 'boolean',
             'recurrence_frequency' => RecurrenceFrequency::class,
             'submitted_at' => 'datetime',
@@ -52,6 +54,16 @@ class Task extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_task_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_task_id');
     }
 
     public function template(): BelongsTo

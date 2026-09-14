@@ -40,6 +40,74 @@
                 </x-card>
             @endif
 
+            <x-card title="Subtasks" icon="sitemap">
+                @if ($canCreate)
+                    <div class="flex justify-end">
+                        <x-button size="sm" icon="plus" wire:click="openSubtaskForm">Add subtask</x-button>
+                    </div>
+                @endif
+
+                @if ($showSubtaskForm)
+                    <form wire:submit="saveSubtask" class="mt-4 grid gap-3 rounded-xl border border-line bg-subtle/50 p-4">
+                        <x-input label="Title" wire:model="subtaskTitle" :error="$errors->first('subtaskTitle')" required />
+                        <x-textarea label="Description" wire:model="subtaskDescription" rows="3" :error="$errors->first('subtaskDescription')" />
+                        @if ($canAssign)
+                            <x-select label="Assignee" wire:model="subtaskAssignedTo" placeholder="Unassigned" :error="$errors->first('subtaskAssignedTo')">
+                                @foreach ($users as $user)
+                                    <option value="{{ $user->id }}">{{ $user->name }}</option>
+                                @endforeach
+                            </x-select>
+                        @endif
+                        <x-input label="Due date" type="date" wire:model="subtaskDueDate" :error="$errors->first('subtaskDueDate')" />
+                        <x-select label="Status" wire:model="subtaskStatus" :error="$errors->first('subtaskStatus')">
+                            @foreach ($statusOptions as $value => $label)
+                                <option value="{{ $value }}">{{ $label }}</option>
+                            @endforeach
+                        </x-select>
+                        <div class="flex justify-end gap-2">
+                            <x-button size="sm" variant="ghost" wire:click="cancelSubtaskForm">Cancel</x-button>
+                            <x-button size="sm" type="submit" target="saveSubtask">{{ $editingSubtaskId ? 'Update subtask' : 'Create subtask' }}</x-button>
+                        </div>
+                    </form>
+                @endif
+
+                @if ($task->children->isNotEmpty())
+                    <ul class="mt-4 space-y-3">
+                        @foreach ($task->children as $child)
+                            <li class="rounded-xl border border-line bg-subtle/50 px-3 py-3" wire:key="subtask-{{ $child->id }}">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <div class="min-w-0">
+                                        <a href="{{ route('tasks.show', $child) }}" wire:navigate class="text-sm font-semibold text-ink hover:text-accent hover:underline">
+                                            {{ $child->title }}
+                                        </a>
+                                        @if ($child->description)
+                                            <p class="mt-1 text-xs text-muted line-clamp-2">{{ $child->description }}</p>
+                                        @endif
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        @can('update', $child)
+                                            <x-tooltip text="Edit subtask">
+                                                <x-button size="sm" square variant="ghost" icon="pencil" wire:click="editSubtask({{ $child->id }})" aria-label="Edit {{ $child->title }}" />
+                                            </x-tooltip>
+                                        @endcan
+                                        @can('delete', $child)
+                                            <x-tooltip text="Delete subtask">
+                                                <x-button size="sm" square variant="danger-ghost" icon="trash" wire:click="deleteSubtask({{ $child->id }})" wire:confirm="Delete this subtask?" aria-label="Delete {{ $child->title }}" />
+                                            </x-tooltip>
+                                        @endcan
+                                        <span class="inline-flex items-center gap-1 px-2 py-1 font-mono text-[10px] uppercase text-faint">
+                                            {{ $child->status->label() }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </li>
+                        @endforeach
+                    </ul>
+                @else
+                    <p class="mt-4 text-sm text-muted">No subtasks yet.</p>
+                @endif
+            </x-card>
+
             @if ($canUpdate)
                 <x-card title="Evidence" subtitle="Attach screenshots, docs, or other proof for this task." icon="upload">
                     <form wire:submit="uploadEvidence" class="space-y-3">
@@ -206,6 +274,16 @@
                             <dd class="font-mono text-xs text-ink tabular-nums">{{ $task->time_spent_minutes }} min</dd>
                         </div>
                     </dl>
+                </x-card>
+            @endif
+
+            @if ($canDelete)
+                <x-card title="Delete" icon="trash">
+                    <div class="flex justify-end">
+                        <x-button size="sm" variant="danger-ghost" wire:click="deleteTask" wire:confirm="Delete this task and any direct evidence or comments? This will not delete subtasks unless they are also removed safely." aria-label="Delete {{ $task->title }}">
+                            Delete task
+                        </x-button>
+                    </div>
                 </x-card>
             @endif
         </div>

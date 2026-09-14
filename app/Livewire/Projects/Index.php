@@ -7,7 +7,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\ProfitAndLossService;
 use App\Services\ProjectOwnershipService;
-use App\Services\SetupChecklistService;
+
 use App\Support\Money;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Support\Facades\Auth;
@@ -121,7 +121,7 @@ class Index extends Component
         $this->owners = array_values($this->owners);
     }
 
-    public function save(ProjectOwnershipService $ownership, SetupChecklistService $checklists): void
+    public function save(ProjectOwnershipService $ownership): void
     {
         $isCreating = $this->editingProjectId === null;
 
@@ -161,7 +161,7 @@ class Index extends Component
         }
 
         try {
-            DB::transaction(function () use ($isCreating, $validated, $paisa, $ownerRows, $ownership, $checklists) {
+            DB::transaction(function () use ($isCreating, $validated, $paisa, $ownerRows, $ownership) {
                 if ($isCreating) {
                     $project = Project::query()->create([
                         'domain' => $validated['domain'],
@@ -174,7 +174,7 @@ class Index extends Component
                     ]);
 
                     $ownership->sync($project, $ownerRows);
-                    $checklists->generateForProject($project, Auth::user());
+
                 } else {
                     $project = Project::query()->findOrFail($this->editingProjectId);
                     $project->update([

@@ -20,7 +20,6 @@ use App\Services\ArticleWorkflowService;
 use App\Services\ExpenseService;
 use App\Services\LinkWorkflowService;
 use App\Services\ProjectOwnershipService;
-use App\Services\SetupChecklistService;
 use App\Services\TaskWorkflowService;
 use Database\Seeders\RolePermissionSeeder;
 use Database\Seeders\TaskTemplateSeeder;
@@ -54,10 +53,8 @@ function workProject(User $owner, array $overrides = []): Project
     return $project->fresh();
 }
 
-it('generates setup tasks from templates when a project is created', function () {
+it('creates a project without auto-generating setup tasks', function () {
     $admin = workAdmin();
-    $templateCount = TaskTemplate::query()->where('is_active', true)->count();
-    expect($templateCount)->toBeGreaterThan(10);
 
     Livewire::actingAs($admin)
         ->test(ProjectsIndex::class)
@@ -73,12 +70,8 @@ it('generates setup tasks from templates when a project is created', function ()
 
     $project = Project::query()->where('domain', 'setup-check.test')->first();
     expect($project)->not->toBeNull()
-        ->and($project->tasks()->where('type', TaskType::Setup->value)->count())->toBe($templateCount)
-        ->and($project->openTasksCount())->toBe($templateCount);
-
-    // Idempotent if generator called again
-    $created = app(SetupChecklistService::class)->generateForProject($project);
-    expect($created)->toBe(0);
+        ->and($project->tasks()->count())->toBe(0)
+        ->and($project->openTasksCount())->toBe(0);
 });
 
 it('still rejects project ownership that does not total 100% (regression)', function () {

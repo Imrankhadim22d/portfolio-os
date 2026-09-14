@@ -79,10 +79,12 @@
                             </x-table.cell>
                         @endif
                         <x-table.cell class="min-w-[12rem]">
-                            <a href="{{ route('tasks.show', $task) }}" wire:navigate class="font-medium text-ink transition-colors hover:text-accent">
-                                {{ $task->title }}
-                            </a>
-                            <p class="mt-0.5 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">{{ $task->type->label() }}</p>
+                            <div class="{{ $task->parent_task_id ? 'pl-4 border-l border-line' : '' }}">
+                                <a href="{{ route('tasks.show', $task) }}" wire:navigate class="font-medium text-ink transition-colors hover:text-accent">
+                                    {{ $task->title }}
+                                </a>
+                                <p class="mt-0.5 font-mono text-[10px] tracking-[0.08em] text-faint uppercase">{{ $task->type->label() }}</p>
+                            </div>
                         </x-table.cell>
                         <x-table.cell muted nowrap>{{ $task->project?->domain }}</x-table.cell>
                         <x-table.cell>
