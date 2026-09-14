@@ -7,6 +7,7 @@ use App\Enums\LinkWorkflowStatus;
 use App\Models\Article;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
+use App\Models\ExpenseParticipant;
 use App\Models\Link;
 use App\Models\RecurringExpense;
 use App\Models\User;
@@ -103,10 +104,19 @@ class ExpenseService
             $ownerId = $actor->id;
         }
 
+        $paidById = $isPersonal
+            ? (($data['paid_by_user_id'] ?? $actor->id) ?: $actor->id)
+            : null;
+
+        if ($isPersonal && ! $actor->isAdmin() && (int) ($data['paid_by_user_id'] ?? $actor->id) !== (int) $actor->id) {
+            $paidById = $actor->id;
+        }
+
         $expense = Expense::query()->create([
             'project_id' => $projectId ?: null,
             'expense_type' => $expenseType,
             'owner_user_id' => $ownerId,
+            'paid_by_user_id' => $paidById,
             'is_shared' => $isShared,
             'expense_category_id' => $data['expense_category_id'] ?? null,
             'amount_paisa' => max(0, $amount),
@@ -119,6 +129,10 @@ class ExpenseService
             'is_paid' => (bool) ($data['is_paid'] ?? false),
             'paid_at' => ! empty($data['is_paid']) ? now() : null,
         ]);
+
+        if ($isPersonal) {
+            $this->saveParticipants($expense, $data['participants'] ?? [], $amount);
+        }
 
         if ($receipt) {
             $this->storeReceipt($expense, $receipt);
@@ -177,10 +191,19 @@ class ExpenseService
             $ownerId = $actor->id;
         }
 
+        $paidById = $isPersonal
+            ? (($data['paid_by_user_id'] ?? $expense->paid_by_user_id) ?: $actor->id)
+            : null;
+
+        if ($isPersonal && ! $actor->isAdmin() && (int) ($data['paid_by_user_id'] ?? $expense->paid_by_user_id ?? $actor->id) !== (int) $actor->id) {
+            $paidById = $actor->id;
+        }
+
         $expense->update([
             'project_id' => $projectId ?: null,
             'expense_type' => $expenseType,
             'owner_user_id' => $ownerId,
+            'paid_by_user_id' => $paidById,
             'is_shared' => $isShared,
             'expense_category_id' => $data['expense_category_id'] ?? $expense->expense_category_id,
             'amount_paisa' => max(0, $amount),
@@ -193,6 +216,10 @@ class ExpenseService
                 : $expense->paid_at,
             'updated_by' => $actor->id,
         ]);
+
+        if ($isPersonal) {
+            $this->saveParticipants($expense, $data['participants'] ?? [], $amount);
+        }
 
         if ($receipt) {
             $this->storeReceipt($expense, $receipt);
@@ -209,10 +236,40 @@ class ExpenseService
         return $expense->fresh();
     }
 
+    protected function saveParticipants(Expense $expense, array $participantIds, int $amountPaisa): void
+    {
+        $ids = array_values(array_unique(array_map('intval', $participantIds)));
+
+        $expense->participants()->delete();
+
+        if (empty($ids)) {
+            return;
+        }
+
+        $splitCount = count($ids);
+        $baseShare = intdiv($amountPaisa, $splitCount);
+        $remainder = $amountPaisa % $splitCount;
+
+        $shareRows = [];
+        foreach ($ids as $index => $userId) {
+            $share = $baseShare + ($index < $remainder ? 1 : 0);
+            $shareRows[] = [
+                'expense_id' => $expense->id,
+                'user_id' => $userId,
+                'share_paisa' => $share,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        ExpenseParticipant::query()->insert($shareRows);
+    }
+
     public function softDelete(Expense $expense, User $actor): void
     {
         $old = $expense->toArray();
         $month = $expense->expense_date->copy()->startOfMonth()->toDateString();
+        $expense->participants()->delete();
         $expense->delete();
         $this->allocations->rebuildForMonth($month);
         $this->audit->log('expense.deleted', $expense, $old, null, $actor);

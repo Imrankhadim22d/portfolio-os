@@ -6,6 +6,7 @@ use App\Support\Money;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -21,6 +22,7 @@ class Expense extends Model
         'project_id',
         'expense_type',
         'owner_user_id',
+        'paid_by_user_id',
         'is_shared',
         'expense_category_id',
         'amount_paisa',
@@ -46,6 +48,7 @@ class Expense extends Model
             'expense_date' => 'date',
             'expense_type' => 'string',
             'owner_user_id' => 'integer',
+            'paid_by_user_id' => 'integer',
             'is_shared' => 'boolean',
             'is_paid' => 'boolean',
             'paid_at' => 'datetime',
@@ -82,6 +85,18 @@ class Expense extends Model
         return $this->hasMany(ExpenseAllocation::class);
     }
 
+    public function participants(): HasMany
+    {
+        return $this->hasMany(ExpenseParticipant::class);
+    }
+
+    public function participantUsers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'expense_participants', 'expense_id', 'user_id')
+            ->withPivot('share_paisa')
+            ->withTimestamps();
+    }
+
     public function recurring(): BelongsTo
     {
         return $this->belongsTo(RecurringExpense::class, 'recurring_expense_id');
@@ -109,7 +124,14 @@ class Expense extends Model
                 ->orWhere('is_shared', true)
                 ->orWhere(function (Builder $personal) use ($user) {
                     $personal->where('expense_type', self::TYPE_PERSONAL)
-                        ->where('owner_user_id', $user->id);
+                        ->where(function (Builder $pw) use ($user) {
+                            $pw->where('owner_user_id', $user->id)
+                                ->orWhereExists(function ($sub) use ($user) {
+                                    $sub->from('expense_participants')
+                                        ->whereColumn('expense_participants.expense_id', 'expenses.id')
+                                        ->where('expense_participants.user_id', $user->id);
+                                });
+                        });
                 });
         });
     }

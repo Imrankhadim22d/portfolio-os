@@ -61,6 +61,26 @@
                             @endforeach
                         </x-select>
                     @endif
+
+                    @if ($canManageAllPersonal)
+                        <x-select label="Paid By *" wire:model="paid_by_user_id" placeholder="Select paid by" :error="$errors->first('paid_by_user_id')">
+                            @foreach ($users as $u)
+                                <option value="{{ $u->id }}">{{ $u->name }}</option>
+                            @endforeach
+                        </x-select>
+                    @else
+                        <x-input label="Paid By *" value="{{ Auth::user()->name }}" disabled :error="$errors->first('paid_by_user_id')" />
+                    @endif
+
+                    <div class="sm:col-span-2 lg:col-span-3">
+                        <div class="font-medium text-sm text-ink">Divide Between *</div>
+                        <div class="mt-2 flex flex-wrap gap-4">
+                            @foreach ($users as $u)
+                                <x-checkbox wire:model="divide_between.{{ $u->id }}" label="{{ $u->name }}" />
+                            @endforeach
+                        </div>
+                        @error('divide_between')<span class="text-red-500 text-xs">{{ $message }}</span>@enderror
+                    </div>
                 @else
                     <div class="sm:col-span-2 lg:col-span-3">
                         <x-checkbox
@@ -83,18 +103,18 @@
                             @endforeach
                         </x-select>
                     @endunless
-                @endif
 
-                <x-select
-                    label="Category"
-                    wire:model="expense_category_id"
-                    placeholder="—"
-                    :error="$errors->first('expense_category_id')"
-                >
-                    @foreach ($categories as $c)
-                        <option value="{{ $c->id }}">{{ $c->name }}</option>
-                    @endforeach
-                </x-select>
+                    <x-select
+                        label="Category"
+                        wire:model="expense_category_id"
+                        placeholder="—"
+                        :error="$errors->first('expense_category_id')"
+                    >
+                        @foreach ($categories as $c)
+                            <option value="{{ $c->id }}">{{ $c->name }}</option>
+                        @endforeach
+                    </x-select>
+                @endif
 
                 <x-input
                     label="Amount"
@@ -105,7 +125,7 @@
                 />
 
                 <x-input
-                    label="Description"
+                    label="{{ $expense_type === 'personal' ? 'Payment Reason *' : 'Description' }}"
                     wire:model="description"
                     :error="$errors->first('description')"
                     required

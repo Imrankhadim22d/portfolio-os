@@ -15,7 +15,15 @@ class ExpensePolicy
     public function view(User $user, Expense $expense): bool
     {
         if ($expense->expense_type === Expense::TYPE_PERSONAL) {
-            return $user->isAdmin() || (int) $expense->owner_user_id === (int) $user->id;
+            if ($user->isAdmin()) {
+                return true;
+            }
+
+            if ((int) $expense->owner_user_id === (int) $user->id) {
+                return true;
+            }
+
+            return $expense->participants()->where('user_id', $user->id)->exists();
         }
 
         if ($expense->is_shared) {

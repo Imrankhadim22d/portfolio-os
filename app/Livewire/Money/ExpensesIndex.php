@@ -62,6 +62,10 @@ class ExpensesIndex extends Component
 
     public string $description = '';
 
+    public string $paid_by_user_id = '';
+
+    public array $divide_between = [];
+
     public string $expense_date = '';
 
     public string $notes = '';
@@ -115,6 +119,8 @@ class ExpensesIndex extends Component
         $this->expense_type = $e->expense_type ?? Expense::TYPE_PROJECT;
         $this->project_id = (string) ($e->project_id ?? '');
         $this->owner_user_id = (string) ($e->owner_user_id ?? '');
+        $this->paid_by_user_id = (string) ($e->paid_by_user_id ?? Auth::id());
+        $this->divide_between = $e->participants()->pluck('user_id')->map(fn ($id) => (int) $id)->all();
         $this->is_shared = (bool) $e->is_shared;
         $this->expense_category_id = (string) ($e->expense_category_id ?? '');
         $this->amount = Money::fromMinor((int) $e->amount_paisa);
@@ -139,9 +145,12 @@ class ExpensesIndex extends Component
             'expense_type' => ['required', 'in:'.Expense::TYPE_PROJECT.','.Expense::TYPE_PERSONAL],
             'project_id' => [$this->expense_type === Expense::TYPE_PROJECT && ! $this->is_shared ? 'required' : 'nullable', 'integer', 'exists:projects,id'],
             'owner_user_id' => [$this->expense_type === Expense::TYPE_PERSONAL ? 'nullable' : 'sometimes', 'integer', 'exists:users,id'],
+            'paid_by_user_id' => [$this->expense_type === Expense::TYPE_PERSONAL ? 'required' : 'nullable', 'integer', 'exists:users,id'],
+            'divide_between' => [$this->expense_type === Expense::TYPE_PERSONAL ? 'required' : 'nullable', 'array', 'min:1'],
+            'divide_between.*' => ['integer', 'exists:users,id'],
             'expense_category_id' => ['nullable', 'integer', 'exists:expense_categories,id'],
             'amount' => ['required', 'numeric', 'min:0'],
-            'description' => ['required', 'string', 'max:500'],
+            'description' => [$this->expense_type === Expense::TYPE_PERSONAL ? 'required' : 'required', 'string', 'max:500'],
             'expense_date' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'is_paid' => ['boolean'],
@@ -156,10 +165,21 @@ class ExpensesIndex extends Component
             $personalOwner = Auth::id();
         }
 
+        $paidById = $this->expense_type === Expense::TYPE_PERSONAL
+            ? ($this->paid_by_user_id !== '' ? (int) $this->paid_by_user_id : Auth::id())
+            : null;
+
+        if ($this->expense_type === Expense::TYPE_PERSONAL && ! Auth::user()->isAdmin()) {
+            $paidById = Auth::id();
+        }
+
+        $participants = $this->expense_type === Expense::TYPE_PERSONAL ? array_values(array_unique(array_map('intval', $this->divide_between))) : [];
+
         $data = [
             'project_id' => $this->project_id !== '' ? (int) $this->project_id : null,
             'expense_type' => $this->expense_type,
             'owner_user_id' => $personalOwner,
+            'paid_by_user_id' => $paidById,
             'is_shared' => $this->is_shared,
             'expense_category_id' => $this->expense_category_id !== '' ? (int) $this->expense_category_id : null,
             'amount' => $this->amount,
@@ -167,6 +187,7 @@ class ExpensesIndex extends Component
             'expense_date' => $this->expense_date,
             'notes' => $this->notes ?: null,
             'is_paid' => $this->is_paid,
+            'participants' => $participants,
         ];
 
         if ($this->editingId) {
@@ -259,6 +280,8 @@ class ExpensesIndex extends Component
         $this->expense_type = Expense::TYPE_PROJECT;
         $this->project_id = $this->projectFilter;
         $this->owner_user_id = '';
+        $this->paid_by_user_id = (string) Auth::id();
+        $this->divide_between = [];
         $this->is_shared = false;
         $this->expense_category_id = '';
         $this->amount = '';

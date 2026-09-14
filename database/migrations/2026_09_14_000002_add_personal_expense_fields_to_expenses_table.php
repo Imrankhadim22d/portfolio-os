@@ -16,14 +16,19 @@ return new class extends Migration
             if (! Schema::hasColumn('expenses', 'owner_user_id')) {
                 $table->foreignId('owner_user_id')->nullable()->after('expense_type')->constrained('users')->nullOnDelete();
             }
+
+            if (! Schema::hasColumn('expenses', 'paid_by_user_id')) {
+                $table->foreignId('paid_by_user_id')->nullable()->after('owner_user_id')->constrained('users')->nullOnDelete();
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('expenses', function (Blueprint $table) {
+            $table->dropForeign(['paid_by_user_id']);
             $table->dropForeign(['owner_user_id']);
-            $table->dropColumn(['expense_type', 'owner_user_id']);
+            $table->dropColumn(['expense_type', 'owner_user_id', 'paid_by_user_id']);
         });
     }
 };
